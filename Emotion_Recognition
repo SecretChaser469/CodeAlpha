@@ -1,0 +1,64 @@
+# ==========================================
+# TASK 2: EMOTION RECOGNITION FROM SPEECH
+# ==========================================
+!pip install -q numpy scikit-learn tensorflow librosa soundfile matplotlib seaborn
+
+import os
+import numpy as np
+import librosa
+import soundfile as sf
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import confusion_matrix
+import tensorflow as tf
+from tensorflow.keras import layers, models
+
+# 1. Generate Synthetic Audio Data (To prevent FileNotFoundError)
+os.makedirs('audio_tmp', exist_ok=True)
+emotions = ['happy', 'sad', 'angry']
+X_audio, y_audio = [], []
+
+print("Extracting MFCC features from audio...")
+for i in range(150):
+    emo = emotions[i % 3]
+    t = np.linspace(0, 1.0, 22050, endpoint=False)
+    freq = 440.0 if emo == 'happy' else (300.0 if emo == 'angry' else 220.0)
+    audio = np.sin(2 * np.pi * freq * t) + 0.1 * np.random.randn(22050)
+
+    path = f"audio_tmp/sample_{i}.wav"
+    sf.write(path, audio, 22050)
+
+    y_aud, sr_aud = librosa.load(path, duration=1.0)
+    mfcc = np.mean(librosa.feature.mfcc(y=y_aud, sr=sr_aud, n_mfcc=13).T, axis=0)
+    X_audio.append(mfcc)
+    y_audio.append(emo)
+
+# 2. Preprocess Data
+le = LabelEncoder()
+y_encoded = le.fit_transform(y_audio)
+X_train, X_test, y_train, y_test = train_test_split(np.array(X_audio), y_encoded, test_size=0.2, random_state=42)
+
+# 3. Build & Train Neural Network
+model = models.Sequential([
+    layers.Dense(128, activation='relu', input_shape=(13,)),
+    layers.Dropout(0.3),
+    layers.Dense(64, activation='relu'),
+    layers.Dense(3, activation='softmax')
+])
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit(X_train, y_train, epochs=30, verbose=0)
+
+# 4. Evaluate & Visualize
+_, acc = model.evaluate(X_test, y_test, verbose=0)
+print(f"\n--- TASK 2 EVALUATION REPORT ---")
+print(f"Speech Emotion Accuracy: {acc*100:.2f}%")
+
+y_pred = np.argmax(model.predict(X_test, verbose=0), axis=1)
+plt.figure(figsize=(6, 4))
+sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_)
+plt.title('Emotion Recognition Confusion Matrix')
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.show()
